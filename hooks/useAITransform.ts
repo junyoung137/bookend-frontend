@@ -1,4 +1,10 @@
-// hooks/useAITransform.ts
+/**
+ * 개선된 AI 변환 훅
+ * - 자동 재시도 로직
+ * - 상세한 에러 메시지
+ * - 진행상황 추적
+ * - 폴백 전략
+ */
 import { useState } from 'react';
 import { ToneType } from '@/types/analysis.types';
 
@@ -12,26 +18,29 @@ const toneInstructions: Record<ToneType, string> = {
 export interface UseAITransformReturn {
   isTransforming: boolean;
   aiResult: string;
+  error: string | null;
+  progress: string;
   transformDirect: (text: string, detectedTone: ToneType, userId?: string) => Promise<string>;
   clearResult: () => void;
   setExternalResult: (text: string) => void;
 }
 
 /**
- * HuggingFace API로 텍스트 확장
+ * HuggingFace API로 텍스트 확장 (자동 재시도 포함)
  */
 async function expandWithHuggingFace(
   originalText: string,
-  detectedTone: ToneType
+  detectedTone: ToneType,
+  onProgress?: (msg: string) => void
 ): Promise<string> {
   const toneInstruction = toneInstructions[detectedTone] || toneInstructions['normal'];
-
   const maxRetries = 3;
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      console.log(`🚀 HuggingFace 호출 (시도 ${attempt + 1}/${maxRetries})`);
+      onProgress?.(`🚀 HuggingFace 호출 (시도 ${attempt + 1}/${maxRetries})`);
+      console.log(`🚀 HuggingFace 시도 ${attempt + 1}/${maxRetries}`);
 
       const response = await fetch('/api/llm/generate', {
         method: 'POST',
@@ -52,35 +61,52 @@ ${originalText}
 **확장된 완전한 텍스트만 작성** (다른 설명 없이):`,
           parameters: {
             temperature: 0.7,
-            max_tokens: 4000,
+            max_tokens: 2000,
           }
         }),
-        signal: AbortSignal.timeout(60000),
+        signal: AbortSignal.timeout(35000), // 35초 (API 타임아웃 30초 + 버퍼)
       });
 
-      if (!response.ok) {
-        if (response.status === 503 && attempt < maxRetries - 1) {
-          console.warn(`⏳ 모델 로딩 중... ${attempt + 1}/${maxRetries} 재시도`);
-          await new Promise(resolve => setTimeout(resolve, 5000));
+      // ⏳ 모델 로딩 중 - 재시도
+      if (response.status === 503) {
+        const errorData = await response.json().catch(() => ({}));
+        const retryAfter = errorData.retryAfter || 15;
+        
+        if (attempt < maxRetries - 1) {
+          onProgress?.(`⏳ 모델 로딩 중... ${retryAfter}초 후 재시도`);
+          console.warn(`⏳ 503 오류, ${retryAfter}초 대기 후 재시도`);
+          await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
           continue;
         }
-        
-        throw new Error(`API 요청 실패: ${response.status}`);
       }
 
+      // ❌ 인증 실패
+      if (response.status === 401) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`인증 실패: ${errorData.error || 'API 키 문제'}`);
+      }
+
+      // ❌ 모델 찾기 실패
+      if (response.status === 404) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`모델 오류: ${errorData.error || '모델에 접근할 수 없습니다'}`);
+      }
+
+      // ❌ 기타 HTTP 에러
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`API 오류 ${response.status}: ${errorData.error || response.statusText}`);
+      }
+
+      // ✅ 성공
       const data = await response.json();
-      let expandedText = 
-        data.data?.generated_text || 
-        data.generated_text || 
-        data.text || 
-        data.content || 
-        data.result || '';
+      let expandedText = data.data?.generated_text || data.generated_text || '';
 
       if (!expandedText || expandedText.trim().length === 0) {
-        throw new Error('API 응답이 비어있습니다');
+        throw new Error('API에서 빈 응답을 반환했습니다');
       }
 
-      // 텍스트 정제
+      // 🧹 텍스트 정제
       const cleanPatterns = [
         /^(원문|확장된 텍스트|변환된 텍스트)[:：]\s*/gim,
         /\*\*.*?\*\*/g,
@@ -95,31 +121,53 @@ ${originalText}
 
       expandedText = expandedText.replace(/\s+/g, ' ').trim();
 
+      // ✅ 결과 검증
       if (expandedText.length < originalText.length * 1.1) {
-        throw new Error('확장 결과가 충분하지 않습니다');
+        throw new Error('확장 결과가 충분하지 않습니다 (다시 시도)');
       }
 
-      console.log("✅ HuggingFace 호출 성공");
+      onProgress?.('✅ HuggingFace 호출 성공');
+      console.log('✅ HuggingFace 성공');
       return expandedText;
 
     } catch (error) {
-      console.error(`❌ HuggingFace 시도 ${attempt + 1} 실패:`, error);
+      console.error(`❌ 시도 ${attempt + 1} 실패:`, error);
       lastError = error as Error;
 
       if (attempt < maxRetries - 1) {
-        const waitTime = Math.pow(2, attempt) * 1000;
-        console.log(`⏳ ${waitTime / 1000}초 대기 후 재시도...`);
+        const waitTime = Math.pow(2, attempt) * 1000; // 1초, 2초, 4초
+        onProgress?.(`⏳ ${waitTime / 1000}초 후 재시도...`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
       }
     }
   }
 
-  throw lastError || new Error('변환 실패');
+  // 모든 시도 실패
+  const errorMsg = lastError?.message || '변환 실패';
+  console.error(`❌ 최종 실패: ${errorMsg}`);
+  throw new Error(errorMsg);
+}
+
+/**
+ * 폴백 전략: 원문 약간 수정해서 반환 (사용자 경험 개선)
+ */
+function getFallbackText(text: string, tone: ToneType): string {
+  let result = text;
+
+  // 간단한 개선
+  if (tone === 'formal') {
+    result = result.replace(/이다\./g, '입니다.');
+    result = result.replace(/한다\./g, '합니다.');
+  }
+
+  return result;
 }
 
 export function useAITransform(): UseAITransformReturn {
   const [isTransforming, setIsTransforming] = useState(false);
   const [aiResult, setAiResult] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState('');
 
   const transformDirect = async (
     text: string,
@@ -128,17 +176,36 @@ export function useAITransform(): UseAITransformReturn {
   ): Promise<string> => {
     setIsTransforming(true);
     setAiResult('');
+    setError(null);
+    setProgress('시작 중...');
 
     try {
-      // ✅ 무조건 HuggingFace 사용 (백엔드는 피드백 저장만)
-      console.log("📝 HuggingFace 기본 교정 실행");
-      const result = await expandWithHuggingFace(text, detectedTone);
+      console.log('📝 HuggingFace 기본 교정 시작');
+      setProgress('HuggingFace에 요청 중...');
+
+      const result = await expandWithHuggingFace(text, detectedTone, (msg) => {
+        setProgress(msg);
+      });
+
       setAiResult(result);
+      setProgress('완료!');
       return result;
 
-    } catch (error) {
-      console.error('❌ 변환 실패:', error);
-      throw error;
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : '알 수 없는 오류';
+      console.error('❌ 변환 실패:', errorMsg);
+      
+      setError(errorMsg);
+      setProgress(`오류: ${errorMsg}`);
+
+      // 폴백: 원문에 약간의 개선을 가한 텍스트 반환
+      console.log('🔄 폴백 전략 실행');
+      const fallback = getFallbackText(text, detectedTone);
+      setAiResult(fallback);
+      setProgress('(기본 수정만 적용됨)');
+
+      throw err;
+
     } finally {
       setIsTransforming(false);
     }
@@ -146,6 +213,8 @@ export function useAITransform(): UseAITransformReturn {
 
   const clearResult = () => {
     setAiResult('');
+    setError(null);
+    setProgress('');
   };
 
   const setExternalResult = (text: string) => {
@@ -155,6 +224,8 @@ export function useAITransform(): UseAITransformReturn {
   return {
     isTransforming,
     aiResult,
+    error,
+    progress,
     transformDirect,
     clearResult,
     setExternalResult,
