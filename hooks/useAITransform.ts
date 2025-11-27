@@ -1,5 +1,6 @@
 /**
- * AI 변환 Hook
+ * AI 변환 Hook (프론트엔드 HuggingFace)
+ * 피드백 없는 사용자용
  */
 
 import { useState } from 'react';
@@ -22,16 +23,24 @@ export interface UseAITransformReturn {
 }
 
 /**
- * 직접 LLM API 호출 (확장 전용)
+ * HuggingFace API로 텍스트 확장 (재시도 로직 포함)
  */
-async function expandTextDirect(originalText: string, detectedTone: ToneType): Promise<string> {
+async function expandTextDirect(
+  originalText: string, 
+  detectedTone: ToneType
+): Promise<string> {
   const toneInstruction = toneInstructions[detectedTone] || toneInstructions['normal'];
 
-  const response = await fetch('/api/llm/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      prompt: `다음 텍스트를 풍부하게 확장해주세요.
+  const maxRetries = 3;
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await fetch('/api/llm/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: `다음 텍스트를 풍부하게 확장해주세요.
 
 **원문**:
 ${originalText}
@@ -44,54 +53,82 @@ ${originalText}
 5. 불필요한 반복 지양
 
 **확장된 완전한 텍스트만 작성** (다른 설명 없이):`,
-      temperature: 0.7,
-      maxTokens: 4000,
-    })
-  });
+          parameters: {
+            temperature: 0.7,
+            max_tokens: 4000,
+          }
+        })
+      });
 
-  if (!response.ok) {
-    throw new Error(`API 요청 실패: ${response.status}`);
+      if (!response.ok) {
+        // ✅ 503: 재시도 가능
+        if (response.status === 503 && attempt < maxRetries - 1) {
+          console.warn(`⏳ 모델 로딩 중... ${attempt + 1}/${maxRetries} 재시도`);
+          await new Promise(resolve => setTimeout(resolve, 5000)); // 5초 대기
+          continue;
+        }
+        
+        throw new Error(`API 요청 실패: ${response.status}`);
+      }
+
+      const data = await response.json();
+      let expandedText = 
+        data.data?.generated_text || 
+        data.generated_text || 
+        data.text || 
+        data.content || 
+        data.result || '';
+
+      if (!expandedText || expandedText.trim().length === 0) {
+        throw new Error('API 응답이 비어있습니다');
+      }
+
+      // ✅ 텍스트 정제
+      const cleanPatterns = [
+        /^(원문|확장된 텍스트|변환된 텍스트)[:：]\s*/gim,
+        /\*\*.*?\*\*/g,
+        /이 (문장|텍스트)은.*?습니다\./g,
+        /원문의 핵심 의미를.*?보존하면서/g,
+        /자연스러운 한국어 표현을 유지했습니다\./g,
+      ];
+
+      cleanPatterns.forEach((pattern) => {
+        expandedText = expandedText.replace(pattern, '');
+      });
+
+      expandedText = expandedText.replace(/\s+/g, ' ').trim();
+
+      if (expandedText.length < originalText.length * 1.1) {
+        throw new Error('확장 결과가 충분하지 않습니다');
+      }
+
+      return expandedText;
+
+    } catch (error) {
+      console.error(`❌ 시도 ${attempt + 1}/${maxRetries} 실패:`, error);
+      lastError = error as Error;
+
+      // ✅ 마지막 시도가 아니면 대기 후 재시도
+      if (attempt < maxRetries - 1) {
+        const waitTime = Math.pow(2, attempt) * 1000; // 지수 백오프 (1s, 2s, 4s)
+        console.log(`⏳ ${waitTime / 1000}초 대기 후 재시도...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+    }
   }
 
-  const data = await response.json();
-  let expandedText = 
-    data.data?.generated_text || 
-    data.generated_text || 
-    data.text || 
-    data.content || 
-    data.result || '';
-
-  if (!expandedText || expandedText.trim().length === 0) {
-    throw new Error('API 응답이 비어있습니다');
-  }
-
-  // 텍스트 정제
-  const cleanPatterns = [
-    /^(원문|확장된 텍스트|변환된 텍스트)[:：]\s*/gim,
-    /\*\*.*?\*\*/g,
-    /이 (문장|텍스트)은.*?습니다\./g,
-    /원문의 핵심 의미를.*?보존하면서/g,
-    /자연스러운 한국어 표현을 유지했습니다\./g,
-  ];
-
-  cleanPatterns.forEach((pattern) => {
-    expandedText = expandedText.replace(pattern, '');
-  });
-
-  expandedText = expandedText.replace(/\s+/g, ' ').trim();
-
-  if (expandedText.length < originalText.length * 1.1) {
-    throw new Error('확장 결과가 충분하지 않습니다');
-  }
-
-  return expandedText;
+  // ✅ 모든 재시도 실패
+  throw lastError || new Error('변환 실패');
 }
 
 export function useAITransform(): UseAITransformReturn {
   const [isTransforming, setIsTransforming] = useState(false);
   const [aiResult, setAiResult] = useState('');
 
-  const transformDirect = async (text: string, detectedTone: ToneType): Promise<string> => {
+  const transformDirect = async (
+    text: string, 
+    detectedTone: ToneType
+  ): Promise<string> => {
     setIsTransforming(true);
     setAiResult('');
 
@@ -113,13 +150,13 @@ export function useAITransform(): UseAITransformReturn {
 
   const setExternalResult = (text: string) => {
     setAiResult(text);
-};
+  };
 
-return {
-  isTransforming,
-  aiResult,
-  transformDirect,
-  clearResult,
-  setExternalResult,
+  return {
+    isTransforming,
+    aiResult,
+    transformDirect,
+    clearResult,
+    setExternalResult,
   };
 }
