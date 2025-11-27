@@ -23,7 +23,7 @@ import {
   generateQualityScores,
   QualityScore as QualityScoreType,
 } from "@/utils/scoreCalculation";
-import { aceCorrectOrNull } from "@/services/aceFeedback.client";  // ← ACE 추가!
+import { aceCorrectOrNull } from "@/services/aceFeedback.client";
 
 interface QualityPanelProps {
   content: string;
@@ -62,7 +62,7 @@ export function QualityPanel({ content, sectionId, onApplyExamples }: QualityPan
     aiResult,
     transformDirect,
     clearResult,
-    setExternalResult,  // ← 추가!
+    setExternalResult,
   } = useAITransform();
 
   useEffect(() => {
@@ -176,7 +176,7 @@ export function QualityPanel({ content, sectionId, onApplyExamples }: QualityPan
     }
   };
 
-  // ========== ACE 통합 버전 handleAITransform ==========
+  // ========== 수정된 handleAITransform ==========
   const handleAITransform = async (type: 'refine' | 'tone' | 'expand') => {
     if (!metrics || !sectionId || isTransforming) return;
 
@@ -205,7 +205,29 @@ export function QualityPanel({ content, sectionId, onApplyExamples }: QualityPan
 
       console.log(`🎯 Feature: ${featureMap[type]}, Tone: ${targetTone}`);
 
-      // 1️⃣ ACE 개인화 시도
+      // ✅ 확장 기능: 직접 HuggingFace 호출
+      if (type === 'expand') {
+        console.log(`🔧 확장 기능 실행 (HuggingFace)`);
+        try {
+          const detectedTone: ToneType = analysis?.tone?.detectedTone || 'normal';
+          const result = await transformDirect(plainText, detectedTone);
+          
+          console.log(`✅ 확장 완료:`, result.substring(0, 50));
+          
+          // ✅ 결과를 미리보기에 표시
+          setExternalResult(result);
+          
+          showToast('✨ 텍스트가 확장되었습니다!', 'success');
+          return;
+          
+        } catch (expandError) {
+          console.error('❌ 확장 실패:', expandError);
+          showToast('텍스트 확장에 실패했습니다. 다시 시도해주세요.', 'error');
+          return;
+        }
+      }
+
+      // 1️⃣ ACE 개인화 시도 (refine, tone)
       try {
         console.log(`🔄 ACE 시도 중...`);
         
@@ -234,7 +256,7 @@ export function QualityPanel({ content, sectionId, onApplyExamples }: QualityPan
 
           console.log(`✅ ACE 성공! Method: ${aceResult.method}`);
 
-          // 미리보기에 표시
+          // ✅ 미리보기에 표시
           setExternalResult(correctedText);
 
           showToast(
@@ -244,7 +266,6 @@ export function QualityPanel({ content, sectionId, onApplyExamples }: QualityPan
             'success'
           );
 
-          // ACE 성공 시 여기서 종료
           return;
         }
         
@@ -254,25 +275,9 @@ export function QualityPanel({ content, sectionId, onApplyExamples }: QualityPan
         console.warn('❗ ACE 실패, 기본 LLM으로 fallback:', aceError);
       }
 
-      // 2️⃣ 기존 HF LLM 사용 (피드백 없거나 ACE 실패 시)
-      console.log(`🔧 기존 LLM 사용 (type: ${type})`);
+      // 2️⃣ 기존 HF LLM 사용 (다듬기 / 톤 조정)
+      console.log(`🔧 기본 LLM 사용 (type: ${type})`);
 
-      if (type === 'expand') {
-        // 확장: transformDirect 사용
-        try {
-          const detectedTone: ToneType = analysis?.tone?.detectedTone || 'normal';
-          await transformDirect(plainText, detectedTone);
-          // transformDirect가 내부에서 setExternalResult 호출함
-          console.log('✅ 확장 완료');
-          return;
-        } catch (expandError) {
-          console.error('❌ 확장 API 실패:', expandError);
-          showToast('텍스트 확장에 실패했습니다. 다시 시도해주세요.', 'error');
-          return;
-        }
-      }
-
-      // 다듬기 / 톤 조정: transform 사용
       const typeMap: Record<'refine' | 'tone' | 'expand', TransformationType> = {
         refine: 'paraphrase',
         tone: 'tone_adjust',
