@@ -1,9 +1,9 @@
 /**
- * 개선된 AI 변환 훅 v2
+ * 개선된 AI 변환 훅 v3
+ * - transformDirect 결과 반환
  * - 자동 재시도 (지수 백오프)
  * - 강화된 폴백 로직
  * - 상세한 에러 메시지
- * - 진행상황 UI 업데이트
  */
 import { useState } from 'react';
 import { ToneType } from '@/types/analysis.types';
@@ -162,7 +162,7 @@ ${originalText}
   // 모든 시도 실패
   const errorMsg = lastError?.message || '변환 실패';
   console.error(`❌ 최종 실패: ${errorMsg}`);
-  throw new Error(errorMsg);
+  throw lastError || new Error(errorMsg);
 }
 
 /**
@@ -214,6 +214,9 @@ export function useAITransform(): UseAITransformReturn {
       setAiResult(result);
       setProgress('✅ 완료!');
       setSuccess(true);
+      console.log('✅ 변환 완료, 결과 반환:', result.substring(0, 50));
+      
+      // ✅ 결과 반환 (QualityPanel에서 사용)
       return result;
 
     } catch (err) {
@@ -229,6 +232,7 @@ export function useAITransform(): UseAITransformReturn {
       setAiResult(fallback);
       setProgress('(기본 개선만 적용되었습니다)');
 
+      // ✅ 폴백 결과도 반환
       return fallback;
 
     } finally {
