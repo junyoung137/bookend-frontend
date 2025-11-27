@@ -1,9 +1,8 @@
 /**
- * 개선된 HuggingFace API Route
- * - 더 짧은 타임아웃 (30초)
- * - 재시도 로직 개선
- * - 상세한 에러 로깅
- * - 모델 캐시 전략
+ * HuggingFace API Route (디버깅 강화)
+ * - 상세한 로깅
+ * - 환경변수 검증
+ * - 타임아웃 최적화
  */
 import { NextRequest, NextResponse } from "next/server";
 
@@ -16,73 +15,42 @@ interface GenerateRequest {
   };
 }
 
-// 모델 응답 캐시 (5분)
-const modelCache = new Map<string, { timestamp: number; available: boolean }>();
-const CACHE_TTL = 5 * 60 * 1000;
-
-async function isModelAvailable(model: string, apiKey: string): Promise<boolean> {
-  const cached = modelCache.get(model);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    return cached.available;
-  }
-
-  try {
-    const response = await fetch("https://huggingface.co/api/models", {
-      headers: { Authorization: `Bearer ${apiKey}` },
-      signal: AbortSignal.timeout(5000),
-    });
-
-    const available = response.ok;
-    modelCache.set(model, { timestamp: Date.now(), available });
-    return available;
-  } catch {
-    return true; // 기본값: 사용 가능하다고 가정
-  }
-}
-
 export async function POST(request: NextRequest) {
   const requestId = Math.random().toString(36).substring(7);
-  
+  const startTime = Date.now();
+
   try {
+    console.log(`\n[${requestId}] ========== HuggingFace API 요청 시작 ==========`);
+
+    // ✅ 요청 파싱
     const body: GenerateRequest = await request.json();
     const { prompt, parameters } = body;
 
-    if (!prompt || prompt.trim().length === 0) {
-      return NextResponse.json(
-        { error: "프롬프트가 비어있습니다." },
-        { status: 400 }
-      );
-    }
+    console.log(`[${requestId}] ✅ 요청 파싱 완료`);
+    console.log(`[${requestId}] 프롬프트 길이: ${prompt.length}자`);
 
+    // ✅ API 키 검증 (critical)
     const apiKey = process.env.HUGGINGFACE_API_KEY;
     if (!apiKey) {
-      console.error(`[${requestId}] ❌ HuggingFace API 키가 설정되지 않았습니다.`);
+      console.error(`[${requestId}] ❌ CRITICAL: HUGGINGFACE_API_KEY 미설정`);
       return NextResponse.json(
-        { error: "서버 설정 오류: HuggingFace API 키가 없습니다." },
+        { error: "❌ HuggingFace API 키가 설정되지 않았습니다", retryable: false },
         { status: 500 }
       );
     }
 
+    console.log(`[${requestId}] ✅ API 키 검증 완료 (길이: ${apiKey.length})`);
+
+    // ✅ 모델 확인
     const model = process.env.NEXT_PUBLIC_LLM_MODEL || "Qwen/Qwen2.5-7B-Instruct";
-    const timeout = Math.min(
-      parseInt(process.env.NEXT_PUBLIC_LLM_TIMEOUT || "30000"),
-      30000 // 최대 30초
-    );
+    console.log(`[${requestId}] 모델: ${model}`);
 
-    console.log(`[${requestId}] 🚀 HuggingFace 요청:`, {
-      model,
-      promptLength: prompt.length,
-      timeout,
-      temperature: parameters?.temperature ?? 0.7,
-    });
+    // ✅ 타임아웃 설정 (최대 30초)
+    const timeout = 30000;
+    console.log(`[${requestId}] 타임아웃: ${timeout}ms`);
 
-    // 모델 가용성 확인 (선택사항)
-    const available = await isModelAvailable(model, apiKey);
-    if (!available) {
-      console.warn(`[${requestId}] ⚠️ 모델 응답 없음 (캐시)`);
-    }
-
-    // ✅ HuggingFace Router API 호출
+    // ✅ HuggingFace API 호출
+    console.log(`[${requestId}] 🚀 HuggingFace 호출 중...`);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
@@ -109,60 +77,67 @@ export async function POST(request: NextRequest) {
     });
 
     clearTimeout(timeoutId);
+    const elapsed = Date.now() - startTime;
+    console.log(`[${requestId}] ✅ 응답 받음 (${elapsed}ms) - 상태: ${response.status}`);
 
     // ❌ 에러 처리
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       console.error(`[${requestId}] ❌ HuggingFace 에러:`, {
         status: response.status,
-        statusText: response.statusText,
         error: errorData,
       });
 
+      // 503: 모델 로딩 중
       if (response.status === 503) {
+        console.warn(`[${requestId}] ⏳ 모델 로딩 중 (재시도 가능)`);
         return NextResponse.json(
           {
-            error: "모델이 로딩 중입니다. 잠시 후 다시 시도해주세요.",
+            error: "모델이 로딩 중입니다. 20초 후 다시 시도해주세요.",
             retryable: true,
-            retryAfter: 20,
           },
           { status: 503 }
         );
       }
 
+      // 401: 인증 실패
       if (response.status === 401 || response.status === 403) {
+        console.error(`[${requestId}] 🔒 인증 실패`);
         return NextResponse.json(
           {
-            error: "API 키 인증 실패: HuggingFace에서 토큰을 확인해주세요.",
-            code: "AUTH_FAILED",
+            error: "API 키 인증 실패. HuggingFace 토큰을 확인하세요.",
+            retryable: false,
           },
           { status: 401 }
         );
       }
 
+      // 404: 모델 없음
       if (response.status === 404) {
+        console.error(`[${requestId}] 🚫 모델을 찾을 수 없음`);
         return NextResponse.json(
           {
-            error: `모델 '${model}'에 접근할 수 없습니다. HuggingFace에서 라이센스를 승인해주세요.`,
-            model,
-            code: "MODEL_NOT_FOUND",
+            error: `모델 '${model}'에 접근할 수 없습니다.`,
+            retryable: false,
           },
           { status: 404 }
         );
       }
 
       return NextResponse.json(
-        { error: `API 오류 ${response.status}` },
+        { error: `API 오류 ${response.status}`, retryable: true },
         { status: response.status }
       );
     }
 
     // ✅ 응답 파싱
     const data = await response.json();
-    let generatedText = "";
+    console.log(`[${requestId}] ✅ 응답 JSON 파싱 완료`);
 
+    let generatedText = "";
     if (data.choices?.[0]?.message?.content) {
       generatedText = data.choices[0].message.content;
+      console.log(`[${requestId}] ✅ 텍스트 추출 성공 (길이: ${generatedText.length})`);
     } else if (data.generated_text) {
       generatedText = data.generated_text;
     } else {
@@ -171,15 +146,15 @@ export async function POST(request: NextRequest) {
     }
 
     if (!generatedText.trim()) {
+      console.error(`[${requestId}] ❌ 빈 응답`);
       return NextResponse.json(
-        { error: "API에서 빈 응답을 반환했습니다." },
+        { error: "API에서 빈 응답을 반환했습니다", retryable: true },
         { status: 502 }
       );
     }
 
-    console.log(`[${requestId}] ✅ HuggingFace 성공:`, {
-      responseLength: generatedText.length,
-    });
+    console.log(`[${requestId}] ✅ 최종 성공! (${elapsed}ms)`);
+    console.log(`[${requestId}] ========== 요청 완료 ==========\n`);
 
     return NextResponse.json({
       success: true,
@@ -189,39 +164,35 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error(`[${requestId}] ❌ 예외 발생:`, {
+    const elapsed = Date.now() - startTime;
+    console.error(`[${requestId}] ❌ 예외 발생 (${elapsed}ms):`, {
       name: error.name,
       message: error.message,
       code: error.code,
     });
 
+    // Timeout
     if (error.name === "AbortError") {
+      console.error(`[${requestId}] ⏱️ 타임아웃 초과`);
       return NextResponse.json(
-        {
-          error: "요청 시간 초과. 다시 시도해주세요.",
-          code: "TIMEOUT",
-          retryable: true,
-        },
+        { error: "요청 시간 초과. 다시 시도해주세요.", retryable: true },
         { status: 504 }
       );
     }
 
+    // 네트워크 오류
     if (error.message?.includes("fetch")) {
+      console.error(`[${requestId}] 🌐 네트워크 오류`);
       return NextResponse.json(
-        {
-          error: "네트워크 연결 오류. 인터넷을 확인해주세요.",
-          code: "NETWORK_ERROR",
-          retryable: true,
-        },
+        { error: "네트워크 연결 오류", retryable: true },
         { status: 502 }
       );
     }
 
+    console.log(`[${requestId}] ========== 요청 실패 ==========\n`);
+
     return NextResponse.json(
-      {
-        error: error.message || "알 수 없는 오류",
-        code: "INTERNAL_ERROR",
-      },
+      { error: error.message || "알 수 없는 오류", retryable: true },
       { status: 500 }
     );
   }
