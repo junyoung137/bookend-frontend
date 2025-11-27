@@ -1,8 +1,22 @@
+/**
+ * 프론트엔드 HuggingFace API Route
+ * 피드백 없는 사용자의 기본 교정 처리
+ */
+
 import { NextRequest, NextResponse } from "next/server";
+
+interface GenerateRequest {
+  prompt: string;
+  parameters?: {
+    temperature?: number;
+    top_p?: number;
+    max_tokens?: number;
+  };
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const body: GenerateRequest = await request.json();
     const { prompt, parameters } = body;
 
     const apiKey = process.env.HUGGINGFACE_API_KEY;
@@ -13,16 +27,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 한국어 톤 변환에 적합한 모델
     const model =
       process.env.NEXT_PUBLIC_LLM_MODEL ||
       "meta-llama/Llama-3.2-3B-Instruct";
 
-    // ✅ HuggingFace 공식 Router API (2025년 11월 최신)
+    // ✅ HuggingFace Router API (최신)
     const url = "https://router.huggingface.co/v1/chat/completions";
-
+    
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 60000);
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60초
 
     console.log("🚀 HuggingFace API 요청:", { 
       url, 
@@ -62,7 +75,7 @@ export async function POST(request: NextRequest) {
         error: errorData,
       });
 
-      // 503 에러는 모델 로딩 중
+      // ✅ 503: 모델 로딩 중
       if (response.status === 503) {
         return NextResponse.json(
           {
@@ -73,7 +86,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // 404 에러는 모델 접근 권한 문제
+      // ✅ 404: 모델 접근 권한 문제
       if (response.status === 404) {
         return NextResponse.json(
           {
@@ -91,9 +104,9 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await response.json();
-    console.log("✅ HuggingFace API 응답 성공:", data);
+    console.log("✅ HuggingFace API 응답 성공");
 
-    // OpenAI 호환 응답 형식 파싱
+    // ✅ OpenAI 호환 응답 파싱
     let generatedText = "";
     if (data.choices && data.choices.length > 0) {
       generatedText = data.choices[0].message?.content || "";
@@ -109,10 +122,11 @@ export async function POST(request: NextRequest) {
         generated_text: generatedText,
       },
     });
+
   } catch (error: any) {
     console.error("❌ API Route Error:", error);
 
-    // Timeout 에러
+    // ✅ Timeout 에러
     if (error.name === "AbortError") {
       return NextResponse.json(
         { error: "요청 시간이 초과되었습니다. 다시 시도해주세요." },
