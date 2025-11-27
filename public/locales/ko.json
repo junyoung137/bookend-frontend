@@ -1,0 +1,18 @@
+{
+  "settings": {
+    "title": "설정",
+    "appSettings": "앱 환경을 설정하세요",
+    "generalSettings": "일반 설정",
+    "versionHistory": "버전 히스토리",
+
+    "languageSettings": "언어 설정",
+    "selectLanguage": "표시 언어를 선택하세요",
+
+    "autoSave": "자동 저장",
+    "enabled": "자동 저장 사용",
+    "saveIntervalLabel": "저장 간격: {{seconds}}초"
+  },
+  "common": {
+    "save": "저장"
+  }
+}

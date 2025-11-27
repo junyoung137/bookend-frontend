@@ -1,0 +1,18 @@
+{
+  "settings": {
+    "title": "Settings",
+    "appSettings": "Configure your app preferences",
+    "generalSettings": "General Settings",
+    "versionHistory": "Version History",
+
+    "languageSettings": "Language",
+    "selectLanguage": "Select display language",
+
+    "autoSave": "Auto Save",
+    "enabled": "Auto save enabled",
+    "saveIntervalLabel": "Save interval: {{seconds}} seconds"
+  },
+  "common": {
+    "save": "Save"
+  }
+}

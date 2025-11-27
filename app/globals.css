@@ -1,0 +1,369 @@
+/* Pretendard 폰트 import */
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+@import '../styles/themes.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+@layer base {
+  :root {
+    --font-pretendard: 'Pretendard Variable', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+
+    /* Semantic colors */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 142 70% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 142 70% 45%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 0 0% 100%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 0 0% 100%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 142 70% 45%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 142 70% 45%;
+  }
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+  body {
+    /* background-color 제거 - 배경 컴포넌트가 보이도록 */
+    background-color: transparent;
+    color: hsl(var(--foreground));
+    font-family: var(--font-pretendard);
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #7A9B76 0%, #9DC88D 100%);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #6B8E68 0%, #8B9B7D 100%);
+}
+.dark::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+.dark::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #5A7B56 0%, #7A9B76 100%);
+}
+
+/* ===== Selection ===== */
+::selection {
+  background: rgba(125, 211, 192, 0.3);
+  color: inherit;
+}
+
+/* ===== Editor Prose ===== */
+.editor-prose {
+  font-size: clamp(1rem, 0.9rem + 0.5vw, 1.125rem);
+  line-height: 1.8;
+  letter-spacing: -0.01em;
+  word-break: keep-all;
+}
+.editor-prose p {
+  margin-bottom: 1rem;
+}
+.editor-prose h1 {
+  font-size: 1.875rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+  margin-top: 2rem;
+}
+.editor-prose h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+/* ===== Glass Effect ===== */
+.glass {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+.dark .glass {
+  background: rgba(37, 43, 59, 0.8);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+/* ===== 전문적인 타이포그래피 최적화 ===== */
+.editor-prose {
+  font-size: clamp(1.0625rem, 1rem + 0.3vw, 1.1875rem);
+  line-height: 1.85;
+  letter-spacing: -0.015em;
+  word-break: keep-all;
+  word-wrap: break-word;
+  color: var(--text-primary);
+  font-weight: 400;
+  transition: color 0.5s ease;
+}
+
+.theme-carol .editor-prose {
+  line-height: 1.9;
+  letter-spacing: -0.01em;
+}
+
+/* 문단 간격 */
+.editor-prose p {
+  margin-bottom: 1.4em;
+}
+
+.editor-prose p:first-child {
+  margin-top: 0;
+}
+
+/* 헤딩 스타일 */
+.editor-prose h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 1.2rem;
+  margin-top: 2.5rem;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.editor-prose h2 {
+  font-size: 1.625rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  margin-top: 2rem;
+  color: var(--text-secondary);
+  letter-spacing: -0.015em;
+}
+
+.editor-prose h3 {
+  font-size: 1.375rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  margin-top: 1.5rem;
+  color: var(--text-secondary);
+}
+
+/* 선택 영역 스타일 */
+.theme-default ::selection {
+  background: rgba(86, 125, 70, 0.25);
+  color: inherit;
+}
+
+.theme-carol ::selection {
+  background: rgba(224, 185, 115, 0.35);
+  color: inherit;
+}
+
+/* 포커스 상태 */
+.editor-prose:focus {
+  outline: none;
+}
+
+.theme-default .editor-prose:focus {
+  color: var(--text-primary);
+}
+
+.theme-carol .editor-prose:focus {
+  text-shadow: 0 0 2px rgba(224, 185, 115, 0.15);
+}
+
+/* 스크롤바 테마별 */
+.theme-default::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #567d46 0%, #6d8b5e 100%);
+}
+
+.theme-carol::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #c94c4c 0%, #e0b973 100%);
+}
+
+.theme-carol::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #b04040 0%, #d4a860 100%);
+}
+
+
+css/* ===== 스크롤바 전역 스타일 (기본) ===== */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db #f3f4f6;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #f3f4f6;
+  border-radius: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 10px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* 다크 모드 스크롤바 */
+.dark *::-webkit-scrollbar-track {
+  background: #374151;
+}
+
+.dark *::-webkit-scrollbar-thumb {
+  background: #6b7280;
+}
+
+.dark *::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* ===== RightPanel (글쓰기 파트너) 스크롤바 완전 제거 ===== */
+/* RightPanel의 스크롤 영역 선택자 */
+aside.border-l > div > div.flex-1.overflow-y-auto,
+aside.border-l > div > div > div.flex-1.overflow-y-auto {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+aside.border-l > div > div.flex-1.overflow-y-auto::-webkit-scrollbar,
+aside.border-l > div > div > div.flex-1.overflow-y-auto::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* ===== 성장 분석 모달 스크롤바 완전 제거 ===== */
+/* 모달 내부 스크롤 영역 */
+div.fixed.inset-0 > div.bg-white.rounded-2xl {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+div.fixed.inset-0 > div.bg-white.rounded-2xl::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Framer Motion으로 생성된 모달 대응 */
+div[style*="position: fixed"] > div.bg-white.rounded-2xl {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+div[style*="position: fixed"] > div.bg-white.rounded-2xl::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* 추가: max-h-[80vh] 클래스를 가진 요소 타겟팅 */
+.max-h-\[80vh\] {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.max-h-\[80vh\]::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* 맞춤법 오류 하이라이트 스타일 */
+.spell-error {
+  text-decoration: underline wavy;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  position: relative;
+}
+
+/* 맞춤법 오류 타입별 색상 */
+.spell-error-spelling {
+  text-decoration-color: #ef4444; /* red-500 */
+}
+
+.spell-error-spacing {
+  text-decoration-color: #f59e0b;
+text-decoration-color: #f59e0b; /* amber-500 */
+}
+
+.spell-error-grammar {
+  text-decoration-color: #3b82f6; /* blue-500 */
+}
+
+/* 호버 시 강조 */
+.spell-error:hover {
+  background-color: rgba(239, 68, 68, 0.1);
+  border-radius: 2px;
+}
+
+/* 에디터 영역 추가 스타일 */
+.spell-check-editor {
+  position: relative;
+}
+
+/* ProseMirror 스타일 오버라이드 */
+.ProseMirror {
+  outline: none !important;
+}
+
+/* 맞춤법 검사 애니메이션 */
+@keyframes pulse-error {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.spell-error-checking {
+  animation: pulse-error 1.5s ease-in-out infinite;
+}
