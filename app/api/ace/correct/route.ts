@@ -20,56 +20,56 @@ export async function POST(request: NextRequest) {
 
     console.log("🚀 백엔드 교정 요청:", { userId, feature });
 
-    // ✅ fetch 문법 수정 (백틱 사용)
-    const response = await fetch(`${BACKEND_URL}/api/feedback/correct`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        user_id: userId,
-        text,
-        feature,
-        tone,
-        genre,
-        complexity,
-        recommendation_score: recommendationScore,
-      }),
-      signal: AbortSignal.timeout(90000), // ✅ 90초 타임아웃
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error("❌ ACE /feedback/correct 에러:", {
-        status: response.status,
-        error: errorData,
-      });
-
-      return NextResponse.json(
-        { 
-          error: "ACE 교정 API 호출 실패", 
-          detail: errorData,
-          shouldFallback: true, // ✅ 프론트엔드 폴백 지시
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/feedback/correct`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-        { status: 500 }
-      );
-    }
-
-    const data = await response.json();
-
-    // ✅ method 체크: backend_skip이면 프론트엔드 처리 지시
-    if (data.method === "backend_skip") {
-      console.log("📝 피드백 없음 → 프론트엔드 HuggingFace 처리");
-      return NextResponse.json({
-        success: true,
-        shouldUseFrontend: true, // ✅ 프론트엔드 플래그
-        data,
+        body: JSON.stringify({
+          user_id: userId,
+          text,
+          feature,
+          tone,
+          genre,
+          complexity,
+          recommendation_score: recommendationScore,
+        }),
+        signal: AbortSignal.timeout(10000), // ✅ 10초만 대기
       });
+
+      if (response.ok) {
+        const data = await response.json();
+
+        // ✅ backend_skip 또는 use_frontend → 프론트엔드 처리
+        if (data.method === "backend_skip" || data.use_frontend) {
+          console.log("📝 백엔드 스킵 → 프론트엔드 HuggingFace 처리");
+          return NextResponse.json({
+            success: true,
+            shouldUseFrontend: true,
+            data,
+          });
+        }
+
+        return NextResponse.json({
+          success: true,
+          data,
+        });
+      }
+
+    } catch (backendError) {
+      console.warn("⚠️ 백엔드 호출 실패, 프론트엔드 폴백:", backendError);
     }
 
+    // ✅ 백엔드 실패 → 프론트엔드 처리
     return NextResponse.json({
       success: true,
-      data,
+      shouldUseFrontend: true,
+      data: {
+        corrected: text,
+        method: "backend_failed",
+        use_frontend: true,
+      },
     });
 
   } catch (error: any) {
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { 
         error: error.message || "알 수 없는 오류",
-        shouldFallback: true, // ✅ 에러 시 폴백
+        shouldUseFrontend: true,
       },
       { status: 500 }
     );
