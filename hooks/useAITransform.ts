@@ -1,12 +1,4 @@
 // hooks/useAITransform.ts
-/**
- * AI 변환 Hook (프론트엔드 HuggingFace + 백엔드 ACE)
- * 
- * 플로우:
- * 1. 피드백 있으면 → ACE 개인화 교정 시도
- * 2. ACE 실패 또는 피드백 없으면 → HuggingFace 폴백
- */
-
 import { useState } from 'react';
 import { ToneType } from '@/types/analysis.types';
 
@@ -23,58 +15,6 @@ export interface UseAITransformReturn {
   transformDirect: (text: string, detectedTone: ToneType, userId?: string) => Promise<string>;
   clearResult: () => void;
   setExternalResult: (text: string) => void;
-}
-
-/**
- * 개인화 교정 시도 (ACE 백엔드)
- */
-async function tryPersonalizedCorrection(
-  originalText: string,
-  detectedTone: ToneType,
-  userId: string
-): Promise<string | null> {
-  try {
-    console.log("🎯 ACE 개인화 교정 시도...");
-    
-    const response = await fetch('/api/ace/correct', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId,
-        text: originalText,
-        feature: 'Expand',
-        tone: detectedTone,
-        genre: 'informative',
-      }),
-      signal: AbortSignal.timeout(90000), // 90초
-    });
-
-    const data = await response.json();
-
-    // ✅ 백엔드 스킵 → HuggingFace로 폴백
-    if (data.shouldUseFrontend || data.data?.method === 'backend_skip') {
-      console.log("📝 백엔드 스킵 → HuggingFace 폴백");
-      return null;
-    }
-
-    // ✅ Groq 실패 → HuggingFace로 폴백
-    if (data.data?.method === 'groq_failed') {
-      console.warn("⚠️ Groq 실패 → HuggingFace 폴백");
-      return null;
-    }
-
-    // ✅ 개인화 교정 성공
-    if (data.success && data.data?.corrected) {
-      console.log("✅ ACE 개인화 교정 성공");
-      return data.data.corrected;
-    }
-
-    return null;
-
-  } catch (error) {
-    console.warn("⚠️ ACE 호출 실패, HuggingFace 폴백:", error);
-    return null;
-  }
 }
 
 /**
@@ -115,14 +55,13 @@ ${originalText}
             max_tokens: 4000,
           }
         }),
-        signal: AbortSignal.timeout(60000), // 60초
+        signal: AbortSignal.timeout(60000),
       });
 
       if (!response.ok) {
-        // ✅ 503: 모델 로딩 중 → 재시도
         if (response.status === 503 && attempt < maxRetries - 1) {
           console.warn(`⏳ 모델 로딩 중... ${attempt + 1}/${maxRetries} 재시도`);
-          await new Promise(resolve => setTimeout(resolve, 5000)); // 5초 대기
+          await new Promise(resolve => setTimeout(resolve, 5000));
           continue;
         }
         
@@ -141,7 +80,7 @@ ${originalText}
         throw new Error('API 응답이 비어있습니다');
       }
 
-      // ✅ 텍스트 정제
+      // 텍스트 정제
       const cleanPatterns = [
         /^(원문|확장된 텍스트|변환된 텍스트)[:：]\s*/gim,
         /\*\*.*?\*\*/g,
@@ -167,16 +106,14 @@ ${originalText}
       console.error(`❌ HuggingFace 시도 ${attempt + 1} 실패:`, error);
       lastError = error as Error;
 
-      // ✅ 마지막 시도가 아니면 대기 후 재시도
       if (attempt < maxRetries - 1) {
-        const waitTime = Math.pow(2, attempt) * 1000; // 지수 백오프 (1s, 2s, 4s)
+        const waitTime = Math.pow(2, attempt) * 1000;
         console.log(`⏳ ${waitTime / 1000}초 대기 후 재시도...`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
       }
     }
   }
 
-  // ✅ 모든 재시도 실패
   throw lastError || new Error('변환 실패');
 }
 
@@ -193,21 +130,7 @@ export function useAITransform(): UseAITransformReturn {
     setAiResult('');
 
     try {
-      // ✅ 1. 피드백 있으면 ACE 개인화 교정 시도
-      if (userId && userId !== 'anonymous') {
-        const personalizedResult = await tryPersonalizedCorrection(
-          text,
-          detectedTone,
-          userId
-        );
-        
-        if (personalizedResult) {
-          setAiResult(personalizedResult);
-          return personalizedResult;
-        }
-      }
-
-      // ✅ 2. HuggingFace 폴백 (피드백 없거나 ACE 실패)
+      // ✅ 무조건 HuggingFace 사용 (백엔드는 피드백 저장만)
       console.log("📝 HuggingFace 기본 교정 실행");
       const result = await expandWithHuggingFace(text, detectedTone);
       setAiResult(result);
